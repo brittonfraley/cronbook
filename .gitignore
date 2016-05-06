@@ -1,0 +1,5 @@
+# dev tools
+bin/
+
+# intermediate files
+*.pyc

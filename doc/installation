@@ -1,0 +1,52 @@
+Installation
+============
+
+The cronbook tools and documentation are oriented towards those with light experience in shell scripting.
+
+1.  Ensure your target environment has python v2.7 installed: 
+
+        python -V
+        ...
+        Python 2.7.10
+
+    Replace "python" with an explicit path if you have multiple versions installed.  If you don't have python v2.7 installed on your system, use your distributions package manager to install it, or grab the source and install it in your home directory under folder ".local". Installation from source will have a series of steps similar to:
+
+        mkdir /home/mylogin/.local
+        tar xzf Python-2.7.10.tgz
+        cd Python-2.7.10
+        ./configure --prefix=/home/mylogin/.local --enable-shared
+        make altinstall prefix=/home/mylogin/.local 
+
+2.  Modify the first line in cronbook.py to suit your python installation:
+
+        #!/home/mylogin/.local/bin/python2.7
+
+3.  Create the storage location for the data files:
+
+        mkdir /home/mylogin/log
+        chmod 755 /home/mylogin/log
+
+4.  Modify the below lines in cronbook.py to reflect your storage location, and rotation preferences:
+
+        g_file_path_root = '/home/mylogin/log'
+        g_file_temporary = '/home/mylogin/log'
+        g_rotate = True
+        g_rotate_max = 10
+        g_rotate_size = 1048576
+
+5.  Copy cronbook.py to a directory in your path and make it executable:
+
+        cp cronbook.py /home/mylogin/bin
+        chmod 755 /home/mylogin/bin/cronbook.py
+
+6.  Test via an in-line add to data set 'test':
+
+        cronbook.py -a '{ "dataset" : "test", "keys" : [ "key_1" ], "values" : [ [ "value_1" ] ] }'
+
+7.  Examine the content of the data file:
+
+        cat /home/mylogin/log/test
+
+8.  Delete the test data set
+
+        cronbook.py -d test

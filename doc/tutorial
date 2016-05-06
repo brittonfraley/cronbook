@@ -1,0 +1,156 @@
+Tutorial
+========
+
+Functions
+---------
+Cronbook currently supports add, delete, rename, and query functions.  Use the help function to see syntax:
+
+    cronbook.py -h
+    ...
+    usage: cronbook.py [-h] [-a JSON] [-d NAME] [-f FILE] [-l FILE] [-q NAME MIN MAX]
+                   [-r NAME_FROM NAME_TO] [-u NAME MIN MAX HOST PORT] [-v]
+    
+    Time series data processor. JSON format is {"dataset":"name", "keys":["key_1",
+    "key_n"], "values":[["value_1", "value_n"]]}
+    
+    optional arguments:
+      -h, --help            show this help message and exit
+      -a JSON, --add JSON   add via inline JSON string
+      -d NAME, --delete NAME
+                            delete dataset
+      -f FILE, --file FILE  add via JSON file
+      -l FILE, --logfile FILE
+                            write output to file
+      -q NAME MIN MAX, --query NAME MIN MAX
+                            query dataset
+      -r NAME_FROM NAME_TO, --rename NAME_FROM NAME_TO
+                            rename dataset
+      -u NAME MIN MAX HOST PORT, --upload NAME MIN MAX HOST PORT
+                            upload dataset
+      -v, --verbose         verbose output
+
+
+JSON Format
+-----------
+For cronbook to create a timestamp automatically, use the below definition to compose a JSON string:
+
+    { 
+      "dataset" : "name", 
+      "keys" : [ "key_1", "key_2", "key_n" ], 
+      "values" : 
+      [ 
+        [ "value_1", "value_2", "value_n" ], 
+        [ "value_1", "value_2", "value_n" ], 
+        [ "value_1", "value_2", "value_n" ] 
+      ] 
+    }
+
+If you wish to supply your own timestamp, pass a unix timestamp in microseconds like so:
+
+    { 
+      "dataset" : "name", 
+      "keys" : [ "unixtime", "key_1", "key_2", "key_n" ], 
+      "values" : 
+      [ 
+        [ "unixtimevalue", "value_1", "value_2", "value_n" ],
+        [ "unixtimevalue", "value_1", "value_2", "value_n" ],
+        [ "unixtimevalue", "value_1", "value_2", "value_n" ] 
+      ] 
+    }
+
+Tip: from the shell, you can get the current unix time in microseconds via:
+
+    datetime=$(($(date +%s%N)/1000))
+
+
+Example
+-------
+In order to learn how to use cronbook, we will create a working example for logging cpu-related statistics. 
+
+1.  Install, configure, and test cronbook.py per the installation document.
+
+2.  If not already installed, install "sysstat" or a similar package for your system that contains the "mpstat" command.
+
+3.  Type the following to see sample output from mpstat:
+
+        mpstat -P ALL 15 1
+        ...
+        Linux 2.6.32-573.18.1.el6.x86_64 (myhost)      04/09/2016      _x86_64_        (2 CPU)
+
+        03:32:06 PM  CPU    %usr   %nice    %sys %iowait    %irq   %soft  %steal  %guest   %idle
+        03:32:21 PM  all    0.94    0.67    0.47    0.03    0.00    0.00    0.00    0.00   97.90
+        03:32:21 PM    0    0.40    0.87    0.53    0.00    0.00    0.00    0.00    0.00   98.20
+        03:32:21 PM    1    1.47    0.40    0.47    0.07    0.00    0.00    0.00    0.00   97.60
+
+        Average:     CPU    %usr   %nice    %sys %iowait    %irq   %soft  %steal  %guest   %idle
+        Average:     all    0.94    0.67    0.47    0.03    0.00    0.00    0.00    0.00   97.90
+        Average:       0    0.40    0.87    0.53    0.00    0.00    0.00    0.00    0.00   98.20
+        Average:       1    1.47    0.40    0.47    0.07    0.00    0.00    0.00    0.00   97.60
+
+    In this example, we are reviewing all cpu statistics for one (15) second interval.
+
+4.  The output from mpstat is structured for readability, not machine processing, so we'll need to parse that output before storing. This will be a common theme when logging data to structured formats. Create the following script and name it 'l_mpstat':
+
+        #!/bin/bash
+       
+        tmp_file_1=/tmp/l_mpstat_1_$$.txt
+       
+        # get cpu activity as space-delimited data
+        mpstat -P ALL 15 1 | grep "Average" | sed 1d > ${tmp_file_1}
+        cnt_records=$(wc -l ${tmp_file_1} | cut -f1 -d ' ')
+       
+        # transform space-delimited data to json and add the hostname
+        results=$(
+        awk -F' ' -v host=$(hostname) -v cnt_records=$cnt_records '
+            BEGIN { printf("["); }
+            {
+                printf("[\"%s\",\"%s\",\"%s\",\"%s\",\"%s\",\"%s\",\"%s\",\"%s\",\"%s\",\"%s\",\"%s\"]", host, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11);
+                if (NR < cnt_records)
+                    printf(",");
+            }
+            END { printf("]"); }
+            ' ${tmp_file_1}
+        )
+       
+        # form json string 
+        dataset="mpstat"
+        keys='"host", "cpu", "%user", "%nice", "%sys", "%iowait", "%irq", "%soft", "%steal", "%idle", "intr/s"'
+        json=$(printf '{ "dataset" : "%s", "keys" : [%s], "values" : %s }' "$dataset" "$keys" "$results" )
+        echo "${json}"
+        #/home/mylogin/bin/cronbook.py -a "${json}"
+       
+        rm ${tmp_file_1}
+        exit 0
+
+5.  Make your script executable, and run it to see the JSON string:
+
+        chmod 755 /home/mylogin/bin/l_mpstat
+        /home/mylogin/bin/l_mpstat
+        ...
+        { "dataset" : "mpstat", "keys" : ["host", "cpu", "%user", "%nice", "%sys", "%iowait", "%irq", "%soft", "%steal", "%idle", "intr/s"], "values" : [["myhost","all","0.67","0.00","0.27","0.10","0.00","0.03","0.00","0.00","98.93"],["myhost","0","0.53","0.00","0.27","0.07","0.00","0.00","0.00","0.00","99.13"],["myhost","1","0.80","0.00","0.33","0.13","0.00","0.00","0.00","0.00","98.73"]] }
+
+6. What we have done, is to transform the space-delimited output of mpstat into JSON, and then formed a JSON document string that cronbook expects.  Delete the echo line and uncomment the call to cronbook.py to complete:
+
+        #delete this line 
+        echo "${json}"
+        ...
+        #uncomment this line
+        /home/mylogin/bin/cronbook.py -a "${json}"
+
+7.  Now, lets run our script, and check the results:
+
+        /home/mylogin/bin/l_mpstat
+        cat /home/mylogin/log/mpstat
+        ...
+        unixtime|timestamp|host|cpu|%user|%nice|%sys|%iowait|%irq|%soft|%steal|%idle|intr/s
+        1460242545098266|2016-04-09 17:55:45.098266|myhost|all|0.77|0.00|0.37|0.07|0.00|0.00|0.00|0.00|98.80
+        1460242545098266|2016-04-09 17:55:45.098266|myhost|0|0.67|0.00|0.47|0.07|0.07|0.07|0.00|0.00|98.66
+        1460242545098266|2016-04-09 17:55:45.098266|myhost|1|0.93|0.00|0.33|0.07|0.00|0.00|0.00|0.00|98.67
+
+    The first column contains the unix time, followed by a human-readable time, followed by our data.
+
+8.  For the final step, add the script to your cron schedule.  In this example, we'll run it every 5 minutes:
+
+        crontab -e
+        ...
+        5,10,15,20,25,30,35,40,45,50,55 * * * * . $HOME/.bash_profile > /dev/null 2>&1; /home/mylogin/bin/l_mpstat > /dev/null 2>&1
